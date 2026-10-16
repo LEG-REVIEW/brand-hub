@@ -28,7 +28,7 @@ export function getTeamMemberColor(name) {
 // are simply skipped until then (no error, no crash).
 export const TEAM_MEMBER_TELEGRAM_IDS = {
   슬기: '8860998831',
-  경민: '',
+  경민: '8914313866',
   상원: '',
   정진: '',
   대표님: '',
