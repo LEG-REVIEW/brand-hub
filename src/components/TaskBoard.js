@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import NewTaskModal from './NewTaskModal';
 import { clients } from '../app/clients';
-import { TEAM_MEMBERS, getTeamMemberColor } from '../lib/teamMembers';
+import { TEAM_MEMBERS, getTeamMemberColor, hasAssignee, toggleAssignee, parseAssignees } from '../lib/teamMembers';
 
 const OFFICIAL_CLIENT_NAMES = clients.filter((c) => c.active).map((c) => c.name);
 
@@ -308,7 +308,7 @@ export default function TaskBoard() {
       .filter((t) => {
         if (t.status !== statusKey) return false;
         if (!matchesSearch(t)) return false;
-        if (assigneeFilter !== '전체' && t.assignedTo !== assigneeFilter) return false;
+        if (assigneeFilter !== '전체' && !hasAssignee(t.assignedTo, assigneeFilter)) return false;
         // Completed tasks older than a week are hidden from the board view
         // (still findable via search above) to keep that column from piling up.
         if (statusKey === 'completed' && !searchQuery.trim() && !isRecentlyCompleted(t)) return false;
@@ -471,21 +471,22 @@ export default function TaskBoard() {
             >
               {task.client}
             </div>
-            {task.assignedTo && (
+            {parseAssignees(task.assignedTo).map((name) => (
               <div
+                key={name}
                 style={{
                   display: 'inline-block',
                   fontSize: 11,
                   fontWeight: 700,
                   color: '#fff',
-                  background: getTeamMemberColor(task.assignedTo),
+                  background: getTeamMemberColor(name),
                   padding: '3px 9px',
                   borderRadius: 20,
                 }}
               >
-                👤 {task.assignedTo}
+                👤 {name}
               </div>
-            )}
+            ))}
             {(task.startDate || task.dueDate) && (
               <div
                 style={{
@@ -926,20 +927,20 @@ export default function TaskBoard() {
             </div>
 
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#999', marginBottom: 6 }}>👤 담당자</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#999', marginBottom: 6 }}>👤 담당자 (여러 명 선택 가능)</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {TEAM_MEMBERS.map((name) => (
                   <button
                     key={name}
                     onClick={() =>
-                      patchTask(selectedTask, { assignedTo: selectedTask.assignedTo === name ? '' : name })
+                      patchTask(selectedTask, { assignedTo: toggleAssignee(selectedTask.assignedTo, name) })
                     }
                     style={{
                       padding: '6px 12px',
                       borderRadius: 20,
-                      border: selectedTask.assignedTo === name ? `2px solid ${getTeamMemberColor(name)}` : '1px solid #ddd',
-                      background: selectedTask.assignedTo === name ? getTeamMemberColor(name) : '#fff',
-                      color: selectedTask.assignedTo === name ? '#fff' : '#333',
+                      border: hasAssignee(selectedTask.assignedTo, name) ? `2px solid ${getTeamMemberColor(name)}` : '1px solid #ddd',
+                      background: hasAssignee(selectedTask.assignedTo, name) ? getTeamMemberColor(name) : '#fff',
+                      color: hasAssignee(selectedTask.assignedTo, name) ? '#fff' : '#333',
                       fontSize: 11,
                       fontWeight: 600,
                       cursor: 'pointer',

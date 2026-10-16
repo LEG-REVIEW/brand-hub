@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
 import { getAuth, rowToTask, taskToRow, appendTask, getAllTasks, clearTaskRow } from '../../../lib/tasksSheet';
 import { notifyTeamMember, formatTaskMessage } from '../../../lib/telegram';
+import { parseAssignees } from '../../../lib/teamMembers';
 
 const SHEET_ID = process.env.BRAND_HUB_SHEET_ID;
 const TAB_NAME = 'Tasks';
@@ -72,29 +73,27 @@ export async function PATCH(request) {
       await notifyTeamMember(mergedTask.assignedTo, formatTaskMessage('✏️ 수정 요청이 왔어요', mergedTask), mergedTask);
     }
 
-    // Reassignment notification: if assignedTo changed, the NEW assignee
-    // gets pinged (not the old one). This also covers the case where a task
-    // is created for one person and handed off to someone else later.
-    if (
-      updates.assignedTo !== undefined &&
-      updates.assignedTo &&
-      updates.assignedTo !== existingTask.assignedTo
-    ) {
-      await notifyTeamMember(updates.assignedTo, formatTaskMessage('🔄 나에게 재배정된 태스크예요', mergedTask), mergedTask);
+    // Assignment notification: only people NEWLY added to the task get
+    // pinged (not those already on it, and not anyone removed).
+    if (updates.assignedTo !== undefined) {
+      const before = parseAssignees(existingTask.assignedTo);
+      const added = parseAssignees(updates.assignedTo).filter((n) => !before.includes(n));
+      if (added.length) {
+        await notifyTeamMember(added.join(', '), formatTaskMessage('🔄 나에게 재배정된 태스크예요', mergedTask), mergedTask);
+      }
     }
 
-    // Comment notification: ping the assignee when SOMEONE ELSE comments.
+    // Comment notification: ping every assignee except the comment's author.
     // The client sends comments as "<author>: <text>".
     if (appendComment && mergedTask.assignedTo) {
       const sep = appendComment.indexOf(': ');
       const author = sep > 0 ? appendComment.slice(0, sep) : '';
-      if (author !== mergedTask.assignedTo) {
-        await notifyTeamMember(
-          mergedTask.assignedTo,
-          formatTaskMessage('💬 새 코멘트가 달렸어요', mergedTask, appendComment),
-          mergedTask
-        );
-      }
+      await notifyTeamMember(
+        mergedTask.assignedTo,
+        formatTaskMessage('💬 새 코멘트가 달렸어요', mergedTask, appendComment),
+        mergedTask,
+        [author]
+      );
     }
 
     return NextResponse.json({ task: mergedTask });

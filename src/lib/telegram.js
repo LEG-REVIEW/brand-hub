@@ -8,7 +8,7 @@
 // set up yet, sending is silently skipped rather than breaking task creation
 // or updates.
 
-import { TEAM_MEMBER_TELEGRAM_IDS } from './teamMembers';
+import { TEAM_MEMBER_TELEGRAM_IDS, parseAssignees } from './teamMembers';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -48,10 +48,15 @@ export const removeButtons = (chatId, messageId) =>
 
 // Looks up the team member's chat_id and sends them a message. No-op if
 // that person hasn't been set up in TEAM_MEMBER_TELEGRAM_IDS yet.
-export async function notifyTeamMember(name, text, task) {
-  const chatId = TEAM_MEMBER_TELEGRAM_IDS[name];
-  if (!chatId) return;
-  await sendTelegramMessage(chatId, text, task ? taskButton(task) : {});
+// `names` may be one name or a comma-separated list of assignees; `exclude`
+// is an array of names to skip (e.g. the person who made the change).
+export async function notifyTeamMember(names, text, task, exclude = []) {
+  for (const name of parseAssignees(names)) {
+    if (exclude.includes(name)) continue;
+    const chatId = TEAM_MEMBER_TELEGRAM_IDS[name];
+    if (!chatId) continue;
+    await sendTelegramMessage(chatId, text, task ? taskButton(task) : {});
+  }
 }
 
 const APP_URL = process.env.APP_URL || 'https://brand-hub-mu-black.vercel.app';

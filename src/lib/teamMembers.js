@@ -33,3 +33,18 @@ export const TEAM_MEMBER_TELEGRAM_IDS = {
   정진: '',
   대표님: '',
 };
+
+// A task can have several assignees. They're stored in the single
+// "assignedTo" sheet column as a comma-separated string ("슬기, 경민"), so
+// older single-name rows keep working unchanged.
+export function parseAssignees(value) {
+  return (value || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+export const hasAssignee = (value, name) => parseAssignees(value).includes(name);
+export function toggleAssignee(value, name) {
+  const list = parseAssignees(value);
+  return (list.includes(name) ? list.filter((n) => n !== name) : [...list, name]).join(', ');
+}

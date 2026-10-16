@@ -31,7 +31,7 @@ const GUIDE = [
   '',
   '• 첫 줄 = 제목, 나머지 = 설명',
   '• 클라이언트 이름(예: Cocorico, 월하)이 글 안에 있으면 자동 지정',
-  '• 담당자는 기본이 나. 다른 사람은 @경민 처럼 쓰기',
+  '• 담당자는 기본이 나. 다른 사람은 @경민 처럼 쓰기 (여러 명: @경민 @상원)',
   '• 사진은 못 받아요. 사진은 앱에서 Drive 폴더에 넣어주세요.',
   '',
   '(취소: /cancel)',
@@ -86,14 +86,16 @@ function findClient(text) {
 }
 
 function parseDraft(text, sender) {
-  let assignedTo = sender;
+  // @이름 can appear several times -> multiple assignees (default: sender)
+  const assignees = [];
   let body = text;
   for (const name of TEAM_MEMBERS) {
     if (body.includes(`@${name}`)) {
-      assignedTo = name;
+      assignees.push(name);
       body = body.split(`@${name}`).join('');
     }
   }
+  const assignedTo = (assignees.length ? assignees : [sender]).join(', ');
   const client = findClient(body);
   const links = [...new Set(body.match(/https?:\/\/[^\s]+/g) || [])];
   const lines = body
@@ -174,7 +176,7 @@ export async function POST(request) {
 
       if (cb.data === 'save') {
         // Sender gets the confirmation below, so skip the self-assign notification.
-        const task = await appendTask(draft, { notify: draft.assignedTo !== sender });
+        const task = await appendTask(draft, { notifyExclude: [sender] });
         await clearDraftState(chatId);
         let reply = formatTaskMessage('✅ 태스크를 저장했어요', task);
         if (!draft.client) reply += '\n\n※ 클라이언트가 비어있어요. 앱에서 지정해주세요.';

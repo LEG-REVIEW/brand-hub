@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import ClientSelect from './ClientSelect';
-import { TEAM_MEMBERS, getTeamMemberColor } from '../lib/teamMembers';
+import { TEAM_MEMBERS, getTeamMemberColor, hasAssignee, toggleAssignee } from '../lib/teamMembers';
 
 function todayStr() {
   const d = new Date();
@@ -167,19 +167,19 @@ export default function NewTaskModal({ onClose, onCreated, clientOptions, isMobi
           )}
         </div>
 
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>담당자</label>
+        <label style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>담당자 (여러 명 선택 가능)</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4, marginBottom: 12 }}>
           {TEAM_MEMBERS.map((name) => (
             <button
               key={name}
               type="button"
-              onClick={() => setAssignedTo(assignedTo === name ? '' : name)}
+              onClick={() => setAssignedTo(toggleAssignee(assignedTo, name))}
               style={{
                 padding: '6px 14px',
                 borderRadius: 20,
-                border: assignedTo === name ? `2px solid ${getTeamMemberColor(name)}` : '1px solid #ddd',
-                background: assignedTo === name ? getTeamMemberColor(name) : '#fff',
-                color: assignedTo === name ? '#fff' : '#333',
+                border: hasAssignee(assignedTo, name) ? `2px solid ${getTeamMemberColor(name)}` : '1px solid #ddd',
+                background: hasAssignee(assignedTo, name) ? getTeamMemberColor(name) : '#fff',
+                color: hasAssignee(assignedTo, name) ? '#fff' : '#333',
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: 'pointer',

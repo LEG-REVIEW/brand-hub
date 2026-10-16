@@ -69,7 +69,7 @@ export function taskToRow(task) {
 
 // Creates one new task row. Used by both the manual "New Task" modal (via
 // /api/tasks POST) and the weekly recurring-task cron job.
-export async function appendTask(partialTask, { notify = true } = {}) {
+export async function appendTask(partialTask, { notify = true, notifyExclude = [] } = {}) {
   const now = new Date().toISOString();
   const newTask = {
     id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -116,7 +116,7 @@ export async function appendTask(partialTask, { notify = true } = {}) {
     // Awaited (not fire-and-forget) since Vercel serverless functions can be
     // frozen/torn down right after the response is sent, which would drop
     // an un-awaited notification.
-    await notifyTeamMember(newTask.assignedTo, formatTaskMessage('🆕 새 태스크가 배정됐어요', newTask), newTask);
+    await notifyTeamMember(newTask.assignedTo, formatTaskMessage('🆕 새 태스크가 배정됐어요', newTask), newTask, notifyExclude);
   }
 
   return newTask;

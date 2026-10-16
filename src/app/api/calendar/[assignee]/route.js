@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAllTasks } from '../../../../lib/tasksSheet';
+import { parseAssignees } from '../../../../lib/teamMembers';
 
 // One subscribable calendar feed per person. Each person gets their own URL:
 //   /api/calendar/{their name}?key=CALENDAR_SECRET
@@ -62,7 +63,7 @@ export async function GET(request, { params }) {
     return new NextResponse('Failed to load tasks', { status: 500 });
   }
 
-  const relevant = tasks.filter((t) => t.assignedTo === assignee && (t.startDate || t.dueDate));
+  const relevant = tasks.filter((t) => parseAssignees(t.assignedTo).includes(assignee) && (t.startDate || t.dueDate));
 
   const events = relevant
     .map((t) => {
