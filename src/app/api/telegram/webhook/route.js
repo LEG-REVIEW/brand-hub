@@ -12,8 +12,8 @@ import { getDraftState, setDraftState, clearDraftState } from '../../../../lib/t
 export const dynamic = 'force-dynamic';
 
 const HELP = [
-  '📝 태스크 만들기: /newtask 를 보내세요.',
-  '그러면 작성 방법을 알려드리고, 내용을 보내면 확인 후 저장해요.',
+  '📝 태스크 만들기: 내용을 그냥 보내세요. 초안을 보여드리고, 저장 버튼을 눌러야 만들어져요.',
+  '작성 방법이 궁금하면 /newtask (또는 새태스크) 를 보내세요.',
   '',
   '/newtask — 새 태스크 작성',
   '/cancel — 작성 중이던 것 취소',
@@ -84,6 +84,11 @@ function findClient(text) {
   }
   return best?.name || '';
 }
+
+// Greetings / acknowledgements that shouldn't start a task draft when sent
+// out of the blue (any other message becomes a draft the user can still cancel).
+const CHATTER = /^(ㅇㅇ|ㅇㅋ|ㅋ+|ㅎ+|ㅠ+|네+|넵|넹|응|아니|감사(합니다|해요)?|고마워(요)?|ok|okay|thanks|thx|hi|hello|안녕(하세요)?)[\s!.~?]*$/i;
+const isChatter = (t) => !t || t.replace(/\s/g, '').length < 3 || CHATTER.test(t.trim());
 
 function parseDraft(text, sender) {
   // @이름 can appear several times -> multiple assignees (default: sender)
@@ -224,7 +229,7 @@ export async function POST(request) {
             reply_markup: CLIENT_BUTTONS,
           });
         }
-      } else if (state === 'awaiting_text' || state === 'awaiting_confirm') {
+      } else if (state === 'awaiting_text' || state === 'awaiting_confirm' || (state === 'idle' && !isChatter(text))) {
         if (!text) {
           await sendTelegramMessage(chatId, '글로 보내주세요. 사진은 저장할 수 없어요.');
         } else {
@@ -241,7 +246,7 @@ export async function POST(request) {
           }
         }
       } else {
-        await sendTelegramMessage(chatId, '태스크를 만들려면 먼저 /newtask 를 보내주세요.\n(도움말: /help)');
+        await sendTelegramMessage(chatId, '태스크 내용을 그대로 보내주시면 초안을 만들어 드려요. (도움말: /help)');
       }
     }
   } catch (err) {
