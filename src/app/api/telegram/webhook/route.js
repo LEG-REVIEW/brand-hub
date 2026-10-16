@@ -136,6 +136,27 @@ function parseDraft(text, sender) {
   };
 }
 
+// Applies a follow-up text message to an existing draft (so adding a title
+// after a photo keeps the client, photos and assignee):
+//  - a message that is only a client name just sets the client
+//  - otherwise it supplies title/description (and @assignee / links / client
+//    if present); anything it doesn't mention is kept from the old draft.
+function mergeDraft(old, text, sender) {
+  const p = parseDraft(text, sender);
+  if (p.client && !p.taskDescription && norm(p.taskTitle) === norm(p.client)) {
+    return { ...old, client: p.client };
+  }
+  const explicit = TEAM_MEMBERS.some((n) => text.includes(`@${n}`));
+  return {
+    ...old,
+    client: p.client || old.client,
+    taskTitle: p.taskTitle,
+    taskDescription: p.taskDescription,
+    links: p.links.length ? p.links : old.links,
+    assignedTo: explicit ? p.assignedTo : old.assignedTo,
+  };
+}
+
 function previewText(d) {
   const lines = [
     '👀 이렇게 저장할까요?',
@@ -269,17 +290,11 @@ export async function POST(request) {
         await sendTelegramMessage(chatId, previewText(d), { reply_markup: BUTTONS });
       };
 
-      if (state === 'awaiting_client' && pending && text && !fileId) {
-        // Expecting just a client name; anything else is re-asked.
-        const c = findClient(text);
-        if (c) {
-          pending.client = c;
-          await showPreview(pending);
-        } else {
-          await sendTelegramMessage(chatId, '그 이름의 클라이언트를 못 찾았어요. 클라이언트 이름만 다시 보내주세요. (예: Cocorico, 월하)', {
-            reply_markup: CLIENT_BUTTONS,
-          });
-        }
+      if (text && !fileId && pending?.taskTitle && (state === 'awaiting_client' || state === 'awaiting_confirm')) {
+        // Follow-up text on an open draft: merge instead of starting over.
+        const d = mergeDraft(pending, text, sender);
+        if (!d.client) await askClient(d);
+        else await showPreview(d);
       } else if (fileId && !text) {
         // Photo(s) without a caption
         if (state === 'awaiting_confirm' && pending) {
