@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import NewTaskModal from './NewTaskModal';
 import { clients } from '../app/clients';
 import { TEAM_MEMBERS, getTeamMemberColor, hasAssignee, toggleAssignee, parseAssignees } from '../lib/teamMembers';
+import { isBlobRef, blobRefToUrl } from '../lib/attachments';
 
 const OFFICIAL_CLIENT_NAMES = clients.filter((c) => c.active).map((c) => c.name);
 
@@ -951,6 +952,28 @@ export default function TaskBoard() {
                 ))}
               </div>
             </div>
+
+            {(selectedTask.screenshotImageIds || []).filter(isBlobRef).length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#999', marginBottom: 6 }}>📎 텔레그램 첨부 사진</div>
+                <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+                  {(() => {
+                    const imgs = selectedTask.screenshotImageIds
+                      .filter(isBlobRef)
+                      .map((ref, i) => ({ id: ref, name: `첨부 ${i + 1}`, thumbnailUrl: blobRefToUrl(ref) }));
+                    return imgs.map((img, i) => (
+                      <img
+                        key={img.id}
+                        src={img.thumbnailUrl}
+                        alt={img.name}
+                        onClick={() => setLightbox({ images: imgs, index: i })}
+                        style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, cursor: 'pointer' }}
+                      />
+                    ));
+                  })()}
+                </div>
+              </div>
+            )}
 
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>

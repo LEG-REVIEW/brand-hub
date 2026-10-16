@@ -46,6 +46,16 @@ export const answerCallbackQuery = (id, text) => callTelegram('answerCallbackQue
 export const removeButtons = (chatId, messageId) =>
   callTelegram('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } });
 
+// Downloads a file a user sent to the bot (bots can fetch up to 20MB).
+export async function downloadTelegramFile(fileId) {
+  if (!BOT_TOKEN) throw new Error('No TELEGRAM_BOT_TOKEN');
+  const info = await (await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`)).json();
+  if (!info.ok) throw new Error(`getFile failed: ${JSON.stringify(info)}`);
+  const res = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${info.result.file_path}`);
+  if (!res.ok) throw new Error(`file download failed: ${res.status}`);
+  return { buffer: Buffer.from(await res.arrayBuffer()), filePath: info.result.file_path };
+}
+
 // Looks up the team member's chat_id and sends them a message. No-op if
 // that person hasn't been set up in TEAM_MEMBER_TELEGRAM_IDS yet.
 // `names` may be one name or a comma-separated list of assignees; `exclude`

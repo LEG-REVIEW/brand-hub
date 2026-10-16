@@ -2,14 +2,16 @@ import { NextResponse } from 'next/server';
 import { clients } from '../../../clients';
 import { appendTask } from '../../../../lib/tasksSheet';
 import { TEAM_MEMBERS, TEAM_MEMBER_TELEGRAM_IDS } from '../../../../lib/teamMembers';
-import { sendTelegramMessage, formatTaskMessage, answerCallbackQuery, removeButtons, taskButton } from '../../../../lib/telegram';
+import { sendTelegramMessage, formatTaskMessage, answerCallbackQuery, removeButtons, taskButton, downloadTelegramFile } from '../../../../lib/telegram';
 import { getDraftState, setDraftState, clearDraftState } from '../../../../lib/telegramDrafts';
+import { put } from '@vercel/blob';
 
 // Telegram sends every message sent to the bot here (registered once via
 // setWebhook). Task creation is an explicit flow: /newtask -> format guide ->
 // user sends text -> preview with 저장/수정/취소 buttons -> save. No AI: the
 // client is matched by name, URLs become links, first line is the title.
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 const HELP = [
   '📝 태스크 만들기: 내용을 그냥 보내세요. 초안을 보여드리고, 저장 버튼을 눌러야 만들어져요.',
@@ -32,7 +34,7 @@ const GUIDE = [
   '• 첫 줄 = 제목, 나머지 = 설명',
   '• 클라이언트 이름(예: Cocorico, 월하)이 글 안에 있으면 자동 지정',
   '• 담당자는 기본이 나. 다른 사람은 @경민 처럼 쓰기 (여러 명: @경민 @상원)',
-  '• 사진은 못 받아요. 사진은 앱에서 Drive 폴더에 넣어주세요.',
+  '• 사진을 같이 보내면 태스크에 첨부돼요 (캡션에 내용 쓰기). 사진만 보내도 돼요.',
   '',
   '(취소: /cancel)',
 ].join('\n');
@@ -85,6 +87,23 @@ function findClient(text) {
   return best?.name || '';
 }
 
+// Downloads a Telegram photo and stores it in Vercel Blob. Tries a private
+// store first, then a public one, and returns a reference string
+// (see lib/attachments.js).
+async function savePhoto(fileId) {
+  const { buffer, filePath } = await downloadTelegramFile(fileId);
+  const ext = (filePath.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const name = `telegram/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const contentType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+  try {
+    const r = await put(name, buffer, { access: 'private', contentType, addRandomSuffix: false });
+    return `blob:p:${r.pathname}`;
+  } catch (err) {
+    const r = await put(name, buffer, { access: 'public', contentType, addRandomSuffix: false });
+    return `blob:u:${r.url}`;
+  }
+}
+
 // Greetings / acknowledgements that shouldn't start a task draft when sent
 // out of the blue (any other message becomes a draft the user can still cancel).
 const CHATTER = /^(ㅇㅇ|ㅇㅋ|ㅋ+|ㅎ+|ㅠ+|네+|넵|넹|응|아니|감사(합니다|해요)?|고마워(요)?|ok|okay|thanks|thx|hi|hello|안녕(하세요)?)[\s!.~?]*$/i;
@@ -127,6 +146,7 @@ function previewText(d) {
   ];
   if (d.taskDescription) lines.push('', `설명:\n${d.taskDescription}`);
   if (d.links.length) lines.push('', `링크:\n${d.links.join('\n')}`);
+  if (d.photos?.length) lines.push('', `📎 사진 ${d.photos.length}장`);
   return lines.join('\n');
 }
 
@@ -181,14 +201,14 @@ export async function POST(request) {
 
       if (cb.data === 'save') {
         // Sender gets the confirmation below, so skip the self-assign notification.
-        const task = await appendTask(draft, { notifyExclude: [sender] });
+        const task = await appendTask({ ...draft, screenshotImageIds: draft.photos || [] }, { notifyExclude: [sender] });
         await clearDraftState(chatId);
         let reply = formatTaskMessage('✅ 태스크를 저장했어요', task);
         if (!draft.client) reply += '\n\n※ 클라이언트가 비어있어요. 앱에서 지정해주세요.';
         if (draft.assignedTo !== sender) reply += `\n※ 담당: ${draft.assignedTo}`;
         await sendTelegramMessage(chatId, reply, taskButton(task));
       } else if (cb.data === 'edit') {
-        await setDraftState(chatId, 'awaiting_text', null);
+        await setDraftState(chatId, 'awaiting_text', { photos: draft.photos || [] });
         await sendTelegramMessage(chatId, '✏️ 수정한 내용을 처음부터 다시 보내주세요. (취소: /cancel)');
       } else {
         await clearDraftState(chatId);
@@ -217,33 +237,83 @@ export async function POST(request) {
       await sendTelegramMessage(chatId, '🗑 취소했어요. 새로 만들려면 /newtask');
     } else {
       const { state, draft: pending } = await getDraftState(chatId);
-      if (state === 'awaiting_client' && pending && text) {
+      const fileId = msg.photo?.length
+        ? msg.photo[msg.photo.length - 1].file_id
+        : msg.document?.mime_type?.startsWith('image/')
+          ? msg.document.file_id
+          : null;
+      const groupId = msg.media_group_id || '';
+
+      // Save the photo (if any) to Blob first.
+      let photo = null;
+      if (fileId) {
+        try {
+          photo = await savePhoto(fileId);
+        } catch (err) {
+          console.error('savePhoto failed:', err);
+          await sendTelegramMessage(chatId, '⚠️ 사진 저장에 실패했어요. 잠시 후 다시 보내주세요.');
+          return NextResponse.json({ ok: true });
+        }
+      }
+      const carry = ['awaiting_text', 'awaiting_confirm', 'awaiting_client'].includes(state) ? pending?.photos || [] : [];
+      const photos = photo ? [...carry, photo] : carry;
+
+      const askClient = async (d) => {
+        await setDraftState(chatId, 'awaiting_client', d);
+        await sendTelegramMessage(chatId, `클라이언트를 못 찾았어요.\n제목: ${d.taskTitle}${d.photos?.length ? `\n📎 사진 ${d.photos.length}장` : ''}\n\n클라이언트 이름만 따로 보내주세요. (예: Cocorico, 월하)`, {
+          reply_markup: CLIENT_BUTTONS,
+        });
+      };
+      const showPreview = async (d) => {
+        await setDraftState(chatId, 'awaiting_confirm', d);
+        await sendTelegramMessage(chatId, previewText(d), { reply_markup: BUTTONS });
+      };
+
+      if (state === 'awaiting_client' && pending && text && !fileId) {
         // Expecting just a client name; anything else is re-asked.
         const c = findClient(text);
         if (c) {
           pending.client = c;
-          await setDraftState(chatId, 'awaiting_confirm', pending);
-          await sendTelegramMessage(chatId, previewText(pending), { reply_markup: BUTTONS });
+          await showPreview(pending);
         } else {
           await sendTelegramMessage(chatId, '그 이름의 클라이언트를 못 찾았어요. 클라이언트 이름만 다시 보내주세요. (예: Cocorico, 월하)', {
             reply_markup: CLIENT_BUTTONS,
           });
         }
-      } else if (state === 'awaiting_text' || state === 'awaiting_confirm' || (state === 'idle' && !isChatter(text))) {
-        if (!text) {
-          await sendTelegramMessage(chatId, '글로 보내주세요. 사진은 저장할 수 없어요.');
+      } else if (fileId && !text) {
+        // Photo(s) without a caption
+        if (state === 'awaiting_confirm' && pending) {
+          pending.photos = photos;
+          const sameAlbum = groupId && pending.mediaGroupId === groupId;
+          if (groupId) pending.mediaGroupId = groupId;
+          if (sameAlbum) await setDraftState(chatId, 'awaiting_confirm', pending); // part of an album already previewed
+          else await showPreview(pending);
+        } else if (state === 'awaiting_client' && pending) {
+          pending.photos = photos;
+          await setDraftState(chatId, 'awaiting_client', pending);
+          await sendTelegramMessage(chatId, `📎 사진을 추가했어요 (${photos.length}장). 클라이언트 이름을 보내주세요.`, { reply_markup: CLIENT_BUTTONS });
         } else {
-          // A new message while a preview is open simply replaces the draft.
+          await askClient({
+            client: '',
+            taskTitle: '(사진 첨부)',
+            taskDescription: '',
+            links: [],
+            assignedTo: sender,
+            photos,
+            mediaGroupId: groupId,
+          });
+        }
+      } else if (state === 'awaiting_text' || state === 'awaiting_confirm' || state === 'awaiting_client' || (state === 'idle' && !isChatter(text))) {
+        if (!text) {
+          await sendTelegramMessage(chatId, '글이나 사진을 보내주세요.');
+        } else {
+          // A new message while a preview is open simply replaces the draft
+          // (but keeps already attached photos).
           const draft = parseDraft(text, sender);
-          if (!draft.client) {
-            await setDraftState(chatId, 'awaiting_client', draft);
-            await sendTelegramMessage(chatId, `클라이언트를 못 찾았어요.\n제목: ${draft.taskTitle}\n\n클라이언트 이름만 따로 보내주세요. (예: Cocorico, 월하)`, {
-              reply_markup: CLIENT_BUTTONS,
-            });
-          } else {
-            await setDraftState(chatId, 'awaiting_confirm', draft);
-            await sendTelegramMessage(chatId, previewText(draft), { reply_markup: BUTTONS });
-          }
+          draft.photos = photos;
+          if (groupId) draft.mediaGroupId = groupId;
+          if (!draft.client) await askClient(draft);
+          else await showPreview(draft);
         }
       } else {
         await sendTelegramMessage(chatId, '태스크 내용을 그대로 보내주시면 초안을 만들어 드려요. (도움말: /help)');
