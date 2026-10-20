@@ -838,19 +838,31 @@ export default function TaskBoard() {
                   style={{ width: '100%', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', boxSizing: 'border-box', marginBottom: 6 }}
                   autoFocus
                 />
-                <button onClick={() => saveDescription(selectedTask)} style={{ border: 'none', background: '#8FA8C8', color: '#fff', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
-                  저장
-                </button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => saveDescription(selectedTask)} style={{ border: 'none', background: '#8FA8C8', color: '#fff', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                    저장
+                  </button>
+                  <button onClick={() => setEditingDesc(false)} style={{ border: '1px solid #ddd', background: '#fff', color: '#666', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                    취소
+                  </button>
+                </div>
               </div>
             ) : (
-              <div
-                onClick={() => {
-                  setDescDraft(selectedTask.taskDescription || '');
-                  setEditingDesc(true);
-                }}
-                style={{ fontSize: 13, color: '#666', marginBottom: 10, lineHeight: 1.5, cursor: 'text', whiteSpace: 'pre-wrap' }}
-              >
-                {selectedTask.taskDescription || <span style={{ color: '#bbb' }}>상세 설명 추가...</span>} <span style={{ fontSize: 11, color: '#bbb' }}>✏️</span>
+              <div style={{ marginBottom: 10 }}>
+                <div
+                  style={{ fontSize: 13, color: '#666', lineHeight: 1.5, whiteSpace: 'pre-wrap', userSelect: 'text', cursor: 'text' }}
+                >
+                  {selectedTask.taskDescription || <span style={{ color: '#bbb' }}>상세 설명이 없어요</span>}
+                </div>
+                <button
+                  onClick={() => {
+                    setDescDraft(selectedTask.taskDescription || '');
+                    setEditingDesc(true);
+                  }}
+                  style={{ border: 'none', background: 'none', color: '#3768AB', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: '4px 0 0' }}
+                >
+                  ✏️ 설명 편집
+                </button>
               </div>
             )}
 
