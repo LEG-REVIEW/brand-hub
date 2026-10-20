@@ -472,22 +472,55 @@ export default function TaskBoard() {
             >
               {task.client}
             </div>
-            {parseAssignees(task.assignedTo).map((name) => (
-              <div
-                key={name}
-                style={{
-                  display: 'inline-block',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: '#fff',
-                  background: getTeamMemberColor(name),
-                  padding: '3px 9px',
-                  borderRadius: 20,
-                }}
-              >
-                👤 {name}
-              </div>
-            ))}
+            {(() => {
+              const names = parseAssignees(task.assignedTo);
+              if (names.length === 0) return null;
+              // One assignee: name pill. Several: compact overlapping initials
+              // so the badge row doesn't wrap onto a second line.
+              if (names.length === 1) {
+                return (
+                  <div
+                    style={{
+                      display: 'inline-block',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#fff',
+                      background: getTeamMemberColor(names[0]),
+                      padding: '3px 9px',
+                      borderRadius: 20,
+                    }}
+                  >
+                    👤 {names[0]}
+                  </div>
+                );
+              }
+              return (
+                <div style={{ display: 'inline-flex', alignItems: 'center' }} title={names.join(', ')}>
+                  {names.map((name, i) => (
+                    <div
+                      key={name}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '50%',
+                        background: getTeamMemberColor(name),
+                        color: '#fff',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '2px solid #fff',
+                        marginLeft: i === 0 ? 0 : -6,
+                        boxSizing: 'content-box',
+                      }}
+                    >
+                      {name.charAt(0)}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
             {(task.startDate || task.dueDate) && (
               <div
                 style={{
