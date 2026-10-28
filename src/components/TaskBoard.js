@@ -5,6 +5,7 @@ import NewTaskModal from './NewTaskModal';
 import { clients } from '../app/clients';
 import { TEAM_MEMBERS, getTeamMemberColor, hasAssignee, toggleAssignee, parseAssignees } from '../lib/teamMembers';
 import { isBlobRef, blobRefToUrl } from '../lib/attachments';
+import TaskCalendar from './TaskCalendar';
 
 const OFFICIAL_CLIENT_NAMES = clients.filter((c) => c.active).map((c) => c.name);
 
@@ -68,6 +69,7 @@ export default function TaskBoard() {
   const [activeTab, setActiveTab] = useState('not_started');
   const [searchQuery, setSearchQuery] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('전체');
+  const [view, setView] = useState('board'); // 'board' | 'calendar'
   const [showNewTask, setShowNewTask] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -303,6 +305,11 @@ export default function TaskBoard() {
       task.taskDescription.toLowerCase().includes(q)
     );
   };
+
+  // Calendar shows every status (completed ones dimmed), same search/assignee filters.
+  const calendarTasks = tasks.filter(
+    (t) => matchesSearch(t) && (assigneeFilter === '전체' || hasAssignee(t.assignedTo, assigneeFilter))
+  );
 
   const columnTasks = (statusKey) =>
     tasks
@@ -675,7 +682,27 @@ export default function TaskBoard() {
         }}
       />
 
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
+        <div style={{ display: 'flex', marginRight: 6, borderRadius: 20, overflow: 'hidden', border: '1px solid #ddd' }}>
+          {[['board', '📋 보드'], ['calendar', '🗓 달력']].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              style={{
+                padding: '5px 12px',
+                border: 'none',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                background: view === key ? '#1a1a1a' : '#fff',
+                color: view === key ? '#fff' : '#888',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {['전체', ...TEAM_MEMBERS].map((name) => (
           <button
             key={name}
@@ -697,7 +724,7 @@ export default function TaskBoard() {
         ))}
       </div>
 
-      {isMobile && (
+      {isMobile && view === 'board' && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 14, overflowX: 'auto' }}>
           {STATUSES.map((s) => (
             <button
@@ -723,6 +750,18 @@ export default function TaskBoard() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>불러오는 중...</div>
+      ) : view === 'calendar' ? (
+        <TaskCalendar
+          tasks={calendarTasks}
+          statusColors={Object.fromEntries(STATUSES.map((st) => [st.key, st.color]))}
+          isMobile={isMobile}
+          onSelect={(t) => {
+            setSelectedTask(t);
+            setEditingTitle(false);
+            setEditingDesc(false);
+            setEditingDates(false);
+          }}
+        />
       ) : isMobile ? (
         <div>{columnTasks(activeTab).map(renderCard)}</div>
       ) : (
