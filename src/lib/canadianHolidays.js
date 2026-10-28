@@ -68,7 +68,6 @@ export function getCanadianHolidays(year) {
     { name: "Valentine's Day", date: fmt(new Date(year, 1, 14)) },
     { name: 'Easter Sunday', date: fmt(easter) },
     { name: "Mother's Day", date: fmt(nthWeekdayOfMonth(year, 4, 0, 2)) }, // 2nd Sunday of May
-    { name: "Father's Day", date: fmt(nthWeekdayOfMonth(year, 5, 0, 3)) }, // 3rd Sunday of June
     { name: 'Halloween', date: fmt(new Date(year, 9, 31)) },
     {
       name: 'Black Friday',
