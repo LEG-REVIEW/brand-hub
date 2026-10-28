@@ -230,7 +230,7 @@ export default function BrandHub() {
 
             {tab === "gallery" && <DriveGallery key={selected.id} initialFolderId={selected.driveFolderId} />}
 
-            {tab === "export" && <ExportTab client={selected} allClients={clients} />}
+            {tab === "export" && <ExportTab client={selected} allClients={clients.filter(c => c.active !== false)} />}
 
             {tab === "prompt" && (
               <div style={{ background: "#FFF", borderRadius: 12, padding: 22 }}>

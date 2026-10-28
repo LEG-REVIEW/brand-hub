@@ -558,7 +558,7 @@ export default function ExportTab({ client, allClients }) {
           <div style={s}>
             <div style={labelStyle}>⚡ Bulk Holiday Campaign Generator</div>
             <p style={{ fontSize: 12, color: "#888", marginBottom: 16, lineHeight: 1.6 }}>
-              Holiday 하나 선택하면 — 전체 클라이언트 {allClients.length}개의 캠페인을 한번에 생성해요.
+              Holiday 하나 선택하면 — 활성 클라이언트 {allClients.length}개의 캠페인을 한번에 생성해요.
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8, marginBottom: 20 }}>
               {CANADA_HOLIDAYS.map(h => (
