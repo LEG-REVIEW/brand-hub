@@ -1,4 +1,4 @@
-// BC/Canada statutory holidays, used by /api/cron/holiday-reminders to
+// BC/Canada statutory holidays plus a few marketing occasions, used by /api/cron/holiday-reminders to
 // auto-create a "get holiday design ready" task 7 days before each one.
 // Add/remove entries in the array built inside getCanadianHolidays() if the
 // list of holidays worth planning content around changes.
@@ -62,5 +62,18 @@ export function getCanadianHolidays(year) {
     { name: 'Remembrance Day', date: fmt(new Date(year, 10, 11)) },
     { name: 'Christmas Day', date: fmt(new Date(year, 11, 25)) },
     { name: 'Boxing Day', date: fmt(new Date(year, 11, 26)) },
+
+    // Not statutory holidays, but common marketing/content occasions.
+    // Delete a line here to stop getting a reminder for it.
+    { name: "Valentine's Day", date: fmt(new Date(year, 1, 14)) },
+    { name: 'Easter Sunday', date: fmt(easter) },
+    { name: "Mother's Day", date: fmt(nthWeekdayOfMonth(year, 4, 0, 2)) }, // 2nd Sunday of May
+    { name: "Father's Day", date: fmt(nthWeekdayOfMonth(year, 5, 0, 3)) }, // 3rd Sunday of June
+    { name: 'Halloween', date: fmt(new Date(year, 9, 31)) },
+    {
+      name: 'Black Friday',
+      date: fmt(new Date(year, 10, nthWeekdayOfMonth(year, 10, 4, 4).getDate() + 1)), // day after US Thanksgiving (4th Thu of Nov)
+    },
+    { name: 'Christmas Eve', date: fmt(new Date(year, 11, 24)) },
   ];
 }
