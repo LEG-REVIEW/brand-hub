@@ -537,7 +537,7 @@ export default function TaskBoard() {
               </div>
             )}
           </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', marginBottom: 6 }}>{task.taskTitle}</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', marginBottom: 6, overflowWrap: 'anywhere' }}>{task.taskTitle}</div>
           {task.taskDescription && (
             <div
               style={{
@@ -548,6 +548,7 @@ export default function TaskBoard() {
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
+                overflowWrap: 'anywhere',
               }}
             >
               {task.taskDescription}
@@ -725,7 +726,7 @@ export default function TaskBoard() {
       ) : isMobile ? (
         <div>{columnTasks(activeTab).map(renderCard)}</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 14 }}>
           {STATUSES.map((s) => (
             <div
               key={s.key}
@@ -742,6 +743,7 @@ export default function TaskBoard() {
                 setDragOverColumn(null);
               }}
               style={{
+                minWidth: 0,
                 background: dragOverColumn === s.key ? '#faf7f0' : 'transparent',
                 borderRadius: 10,
                 padding: dragOverColumn === s.key ? 6 : 0,
