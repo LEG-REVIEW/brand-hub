@@ -20,6 +20,7 @@ const STATUSES = [
   { key: 'completed', label: 'Completed', color: '#B7C9A8' },
 ];
 
+const ARCHIVED = 'archived';
 const POLL_INTERVAL_MS = 12000;
 
 function formatDate(iso) {
@@ -306,10 +307,21 @@ export default function TaskBoard() {
     );
   };
 
-  // Calendar shows every status (completed ones dimmed), same search/assignee filters.
+  // Calendar shows every non-archived status (completed ones dimmed), same search/assignee filters.
   const calendarTasks = tasks.filter(
-    (t) => matchesSearch(t) && (assigneeFilter === '전체' || hasAssignee(t.assignedTo, assigneeFilter))
+    (t) =>
+      t.status !== ARCHIVED &&
+      matchesSearch(t) &&
+      (assigneeFilter === '전체' || hasAssignee(t.assignedTo, assigneeFilter))
   );
+
+  // Archive is personal: a person sees only archived tasks they're assigned
+  // to (plus archived tasks nobody is assigned to). The '대니' identity is
+  // stored as '대표님' on tasks.
+  const me = identity === '대니' ? '대표님' : identity;
+  const myArchived = me
+    ? tasks.filter((t) => t.status === ARCHIVED && (!t.assignedTo || hasAssignee(t.assignedTo, me)))
+    : [];
 
   const columnTasks = (statusKey) =>
     tasks
@@ -600,12 +612,30 @@ export default function TaskBoard() {
     <div style={{ maxWidth: 1300, margin: '0 auto', padding: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: '#1a1a1a' }}>✅ Tasks</h1>
-        <button
-          onClick={() => setShowNewTask(true)}
-          style={{ padding: '8px 16px', background: '#C8B89A', color: '#1a1a1a', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-        >
-          + New Task
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setView(view === 'archive' ? 'board' : 'archive')}
+            style={{
+              padding: '8px 14px',
+              background: view === 'archive' ? '#1a1a1a' : '#fff',
+              color: view === 'archive' ? '#fff' : '#666',
+              border: '1px solid #ddd',
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            📦 아카이브{myArchived.length ? ` (${myArchived.length})` : ''}
+          </button>
+          <button
+            onClick={() => setShowNewTask(true)}
+            style={{ padding: '8px 16px', background: '#C8B89A', color: '#1a1a1a', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            + New Task
+          </button>
+        </div>
       </div>
 
       {identity ? (
@@ -750,6 +780,46 @@ export default function TaskBoard() {
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#999' }}>불러오는 중...</div>
+      ) : view === 'archive' ? (
+        <div>
+          <div style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>
+            📦 {me ? <><strong style={{ color: '#666' }}>{identity}</strong>님의 아카이브 · 아직 시작 안 했거나 보류해 둔 태스크를 보관하는 곳이에요. 보드에는 안 보여요.</> : '위에서 누구인지 먼저 선택해 주세요. 본인 아카이브만 볼 수 있어요.'}
+          </div>
+          {me && myArchived.length === 0 && <div style={{ fontSize: 13, color: '#bbb', padding: 24, textAlign: 'center' }}>아카이브된 태스크가 없어요.</div>}
+          {myArchived
+            .filter(matchesSearch)
+            .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+            .map((task) => (
+              <div
+                key={task.id}
+                onClick={() => {
+                  setSelectedTask(task);
+                  setEditingTitle(false);
+                  setEditingDesc(false);
+                  setEditingDates(false);
+                }}
+                style={{ background: '#fff', borderRadius: 12, padding: 12, marginBottom: 8, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center' }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: '#999', marginBottom: 2 }}>
+                    {task.client}
+                    {task.assignedTo ? ` · 👤 ${task.assignedTo}` : ''}
+                    {task.dueDate ? ` · 📅 ${task.dueDate}` : ''}
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, overflowWrap: 'anywhere' }}>{task.taskTitle}</div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateStatus(task, 'not_started');
+                  }}
+                  style={{ border: '1px solid #ddd', background: '#fff', borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 600, color: '#3768AB', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  ↩︎ 복원
+                </button>
+              </div>
+            ))}
+        </div>
       ) : view === 'calendar' ? (
         <TaskCalendar
           tasks={calendarTasks}
@@ -838,12 +908,27 @@ export default function TaskBoard() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div style={{ fontSize: 12, color: '#999' }}>{selectedTask.client}</div>
-              <button
-                onClick={() => deleteTask(selectedTask)}
-                style={{ border: 'none', background: 'none', color: '#C97B63', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
-              >
-                🗑 삭제
-              </button>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button
+                  onClick={() => {
+                    if (selectedTask.status === ARCHIVED) {
+                      updateStatus(selectedTask, 'not_started');
+                    } else {
+                      updateStatus(selectedTask, ARCHIVED);
+                      setSelectedTask(null);
+                    }
+                  }}
+                  style={{ border: 'none', background: 'none', color: '#3768AB', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  {selectedTask.status === ARCHIVED ? '↩︎ 복원' : '📦 아카이브'}
+                </button>
+                <button
+                  onClick={() => deleteTask(selectedTask)}
+                  style={{ border: 'none', background: 'none', color: '#C97B63', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                >
+                  🗑 삭제
+                </button>
+              </div>
             </div>
 
             {editingTitle ? (

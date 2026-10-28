@@ -63,7 +63,7 @@ export async function GET(request, { params }) {
     return new NextResponse('Failed to load tasks', { status: 500 });
   }
 
-  const relevant = tasks.filter((t) => parseAssignees(t.assignedTo).includes(assignee) && (t.startDate || t.dueDate));
+  const relevant = tasks.filter((t) => t.status !== 'archived' && parseAssignees(t.assignedTo).includes(assignee) && (t.startDate || t.dueDate));
 
   const events = relevant
     .map((t) => {
