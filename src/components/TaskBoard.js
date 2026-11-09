@@ -1,5 +1,6 @@
 'use client';
 
+import ClientSelect from './ClientSelect';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import NewTaskModal from './NewTaskModal';
 import { clients } from '../app/clients';
@@ -90,6 +91,8 @@ export default function TaskBoard() {
   const [loadingImages, setLoadingImages] = useState(false);
   // On Hold needs a one-line "what are we waiting for" before it can be saved.
   // mode 'status' = switching a task to On Hold, 'edit' = changing the reason of a task already on hold.
+  const [editingClient, setEditingClient] = useState(false);
+  const [clientDraft, setClientDraft] = useState('');
   const [holdPrompt, setHoldPrompt] = useState(null); // { task, reason, error, mode }
   const [lightbox, setLightbox] = useState(null); // { images: [...], index: 0 }
   const touchStartXRef = useRef(null);
@@ -144,6 +147,22 @@ export default function TaskBoard() {
       openedFromUrlRef.current = true;
     }
   }, [tasks]);
+
+  // Close the client editor whenever a different task is opened.
+  useEffect(() => {
+    setEditingClient(false);
+  }, [selectedTask?.id]);
+
+  const saveClient = async () => {
+    const next = clientDraft.trim();
+    if (!next || !selectedTask) return;
+    setEditingClient(false);
+    if (next === selectedTask.client) return;
+    const task = selectedTask;
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, client: next } : t)));
+    setSelectedTask((prev) => (prev?.id === task.id ? { ...prev, client: next } : prev));
+    await patchTask(task, { client: next });
+  };
 
   const chooseIdentity = (name) => {
     window.localStorage.setItem('brandhub_identity', name);
@@ -954,7 +973,43 @@ export default function TaskBoard() {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ fontSize: 12, color: '#999' }}>{selectedTask.client}</div>
+              {editingClient ? (
+                <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
+                  <ClientSelect
+                    value={clientDraft}
+                    onChange={setClientDraft}
+                    options={[...new Set([...OFFICIAL_CLIENT_NAMES, 'Holiday', ...tasks.map((t) => t.client).filter(Boolean)])]}
+                  />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <button
+                      onClick={saveClient}
+                      style={{ border: 'none', background: '#3768AB', color: '#fff', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      저장
+                    </button>
+                    <button
+                      onClick={() => setEditingClient(false)}
+                      style={{ border: '1px solid #ddd', background: '#fff', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}
+                    >
+                      취소
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#999', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {selectedTask.client}
+                  <button
+                    onClick={() => {
+                      setClientDraft(selectedTask.client || '');
+                      setEditingClient(true);
+                    }}
+                    title="클라이언트 변경"
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, padding: 0, color: '#3768AB' }}
+                  >
+                    ✏️
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 12 }}>
                 <button
                   onClick={() => {
