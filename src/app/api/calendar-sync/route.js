@@ -27,6 +27,12 @@ export async function GET(request) {
     return t.status !== 'completed' || date >= cutoff;
   });
 
-  for (const t of tasks) await syncTaskToCalendars(t);
-  return NextResponse.json({ synced: tasks.length });
+  // Sequential with a small pause (the API rejects fast bursts), and upsert
+  // only — no wasted delete calls for people who aren't assigned.
+  const mine = (new URL(request.url).searchParams.get('all') ? tasks : tasks.filter((t) => t.assignedTo));
+  for (const t of mine) {
+    await syncTaskToCalendars(t, { onlyUpsert: true });
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return NextResponse.json({ attempted: mine.length });
 }

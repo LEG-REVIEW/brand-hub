@@ -74,14 +74,34 @@ function code(err) {
   return err?.code || err?.response?.status;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Calendar API throttles bursts of writes ("Rate Limit Exceeded", 403/429).
+// Retry with backoff instead of giving up.
+async function withRetry(fn) {
+  let delay = 800;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const c = code(err);
+      const msg = String(err?.message || '');
+      const throttled = c === 429 || (c === 403 && /rate limit|quota/i.test(msg)) || c === 500 || c === 503;
+      if (!throttled || attempt >= 5) throw err;
+      await sleep(delay);
+      delay *= 2;
+    }
+  }
+}
+
 async function upsertEvent(cal, calendarId, task) {
   const event = buildEvent(task);
   try {
-    await cal.events.insert({ calendarId, requestBody: event });
+    await withRetry(() => cal.events.insert({ calendarId, requestBody: event }));
   } catch (err) {
     if (code(err) === 409) {
       // Already exists (or was deleted earlier) — overwrite / restore it.
-      await cal.events.update({ calendarId, eventId: event.id, requestBody: event });
+      await withRetry(() => cal.events.update({ calendarId, eventId: event.id, requestBody: event }));
     } else {
       throw err;
     }
@@ -90,7 +110,7 @@ async function upsertEvent(cal, calendarId, task) {
 
 async function removeEvent(cal, calendarId, task) {
   try {
-    await cal.events.delete({ calendarId, eventId: eventIdFor(task.id) });
+    await withRetry(() => cal.events.delete({ calendarId, eventId: eventIdFor(task.id) }));
   } catch (err) {
     // 404 = never existed, 410 = already deleted. Both are fine.
     if (code(err) !== 404 && code(err) !== 410) throw err;
@@ -100,7 +120,7 @@ async function removeEvent(cal, calendarId, task) {
 // Makes every configured calendar match the task: upsert where the task
 // should appear, delete where it shouldn't (reassigned, archived, deleted,
 // dates cleared). Never throws — calendar sync must not break task saving.
-export async function syncTaskToCalendars(task, { deleted = false } = {}) {
+export async function syncTaskToCalendars(task, { deleted = false, onlyUpsert = false } = {}) {
   try {
     const entries = Object.entries(TEAM_MEMBER_CALENDAR_IDS).filter(([, id]) => id);
     if (!entries.length || !process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return;
@@ -113,7 +133,7 @@ export async function syncTaskToCalendars(task, { deleted = false } = {}) {
       try {
         if (shouldExist && assignees.includes(member)) {
           await upsertEvent(cal, calendarId, task);
-        } else {
+        } else if (!onlyUpsert) {
           await removeEvent(cal, calendarId, task);
         }
       } catch (err) {
