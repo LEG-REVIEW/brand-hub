@@ -1,13 +1,13 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
-import { getAuth, rowToTask, taskToRow, appendTask, getAllTasks, clearTaskRow } from '../../../lib/tasksSheet';
+import { getAuth, rowToTask, taskToRow, appendTask, getAllTasks, clearTaskRow, vancouverDate } from '../../../lib/tasksSheet';
 import { notifyTeamMember, formatTaskMessage } from '../../../lib/telegram';
 import { parseAssignees } from '../../../lib/teamMembers';
 import { syncTaskToCalendars } from '../../../lib/googleCalendar';
 
 // Fields that show up on the calendar event; anything else (e.g. sortOrder
 // reordering) doesn't need a Calendar API call.
-const CALENDAR_FIELDS = ['client', 'taskTitle', 'taskDescription', 'status', 'assignedTo', 'dueDate', 'startDate'];
+const CALENDAR_FIELDS = ['client', 'taskTitle', 'taskDescription', 'status', 'assignedTo', 'dueDate', 'startDate', 'holdReason'];
 
 const SHEET_ID = process.env.BRAND_HUB_SHEET_ID;
 const TAB_NAME = 'Tasks';
@@ -46,7 +46,7 @@ export async function PATCH(request) {
 
     const existingRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: `${TAB_NAME}!A${rowIndex}:O${rowIndex}`,
+      range: `${TAB_NAME}!A${rowIndex}:Q${rowIndex}`,
     });
     const existingRow = (existingRes.data.values || [[]])[0];
     const existingTask = rowToTask(existingRow, rowIndex);
@@ -57,29 +57,38 @@ export async function PATCH(request) {
       mergedComments = `[${stamp}] ${appendComment}\n${mergedComments}`.trim();
     }
 
+    const statusChanging = updates.status && updates.status !== existingTask.status;
+
+    // Putting a task On Hold requires saying what we're waiting for.
+    if (statusChanging && updates.status === 'on_hold' && !String(updates.holdReason || '').trim()) {
+      return NextResponse.json(
+        { error: 'hold_reason_required', detail: 'On Hold로 바꾸려면 필요한 내용(hold reason)을 한 줄 입력해주세요.' },
+        { status: 400 }
+      );
+    }
+
     const mergedTask = {
       ...existingTask,
       ...updates,
       comments: appendComment ? mergedComments : (updates.comments ?? existingTask.comments),
       updatedAt: new Date().toISOString(),
     };
+    if (updates.holdReason !== undefined) mergedTask.holdReason = String(updates.holdReason).trim();
+    if (statusChanging) {
+      mergedTask.statusChangedAt = vancouverDate();
+      // Leaving On Hold clears the reason so it can't go stale.
+      if (mergedTask.status !== 'on_hold') mergedTask.holdReason = '';
+    }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `${TAB_NAME}!A${rowIndex}:O${rowIndex}`,
+      range: `${TAB_NAME}!A${rowIndex}:Q${rowIndex}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values: [taskToRow(mergedTask)] },
     });
 
     if (CALENDAR_FIELDS.some((f) => updates[f] !== undefined)) {
       await syncTaskToCalendars(mergedTask);
-    }
-
-    // Status-change notification: only "needs_changes" pings anyone (the
-    // assignee needs to know work got sent back). "needs_review" is
-    // intentionally silent for now.
-    if (updates.status && updates.status !== existingTask.status && updates.status === 'needs_changes' && mergedTask.assignedTo) {
-      await notifyTeamMember(mergedTask.assignedTo, formatTaskMessage('✏️ 수정 요청이 왔어요', mergedTask), mergedTask);
     }
 
     // Assignment notification: only people NEWLY added to the task get
@@ -124,7 +133,7 @@ export async function DELETE(request) {
     try {
       const auth = getAuth();
       const sheets = google.sheets({ version: 'v4', auth });
-      const r = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${TAB_NAME}!A${rowIndex}:O${rowIndex}` });
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${TAB_NAME}!A${rowIndex}:Q${rowIndex}` });
       existing = rowToTask((r.data.values || [[]])[0], rowIndex);
     } catch (e) {
       console.error('DELETE pre-read failed:', e?.message || e);

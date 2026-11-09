@@ -4,14 +4,19 @@ import { syncTaskToCalendars } from './googleCalendar';
 
 const SHEET_ID = process.env.BRAND_HUB_SHEET_ID;
 const TAB_NAME = 'Tasks';
-export const RANGE = `${TAB_NAME}!A2:O`;
+export const RANGE = `${TAB_NAME}!A2:Q`;
 
 // Column order:
-// id | client | taskTitle | taskDescription | status | links | screenshotImageIds | designImageIds | comments | createdAt | updatedAt | assignedTo | dueDate | startDate | sortOrder
+// id | client | taskTitle | taskDescription | status | links | screenshotImageIds | designImageIds | comments | createdAt | updatedAt | assignedTo | dueDate | startDate | sortOrder | holdReason | statusChangedAt
 
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// YYYY-MM-DD in Vancouver time (the agency's working timezone).
+export function vancouverDate(d = new Date()) {
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' });
 }
 
 export function getAuth() {
@@ -31,7 +36,9 @@ export function rowToTask(row, rowIndex) {
     client: row[1] || '',
     taskTitle: row[2] || '',
     taskDescription: row[3] || '',
-    status: row[4] || 'not_started',
+    // 'needs_changes' was retired in favor of 'on_hold'; map legacy rows so
+    // they never disappear from the board before they're migrated.
+    status: row[4] === 'needs_changes' ? 'on_hold' : row[4] || 'not_started',
     links: row[5] ? row[5].split(',').map((s) => s.trim()).filter(Boolean) : [],
     screenshotImageIds: row[6] ? row[6].split(',').map((s) => s.trim()).filter(Boolean) : [],
     designImageIds: row[7] ? row[7].split(',').map((s) => s.trim()).filter(Boolean) : [],
@@ -45,6 +52,10 @@ export function rowToTask(row, rowIndex) {
     // Legacy rows created before this column existed read as 0, so they sort
     // before newer tasks (which get a large Date.now() value) — that's fine.
     sortOrder: Number(row[14]) || 0,
+    // What we're waiting on from the client (only meaningful when on_hold).
+    holdReason: row[15] || '',
+    // YYYY-MM-DD the status last changed; updated only on status changes.
+    statusChangedAt: row[16] || '',
   };
 }
 
@@ -65,6 +76,8 @@ export function taskToRow(task) {
     task.dueDate || '',
     task.startDate || '',
     task.sortOrder != null ? task.sortOrder : Date.now(),
+    task.holdReason || '',
+    task.statusChangedAt || '',
   ];
 }
 
@@ -89,6 +102,8 @@ export async function appendTask(partialTask, { notify = true, notifyExclude = [
     startDate: partialTask.startDate || todayStr(),
     // New tasks go to the bottom of their column by default.
     sortOrder: Date.now(),
+    holdReason: '',
+    statusChangedAt: vancouverDate(),
   };
 
   const auth = getAuth();
@@ -106,7 +121,7 @@ export async function appendTask(partialTask, { notify = true, notifyExclude = [
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
-    range: `${TAB_NAME}!A${nextRow}:O${nextRow}`,
+    range: `${TAB_NAME}!A${nextRow}:Q${nextRow}`,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: [taskToRow(newTask)] },
   });
@@ -143,6 +158,6 @@ export async function clearTaskRow(rowIndex) {
   const sheets = google.sheets({ version: 'v4', auth });
   await sheets.spreadsheets.values.clear({
     spreadsheetId: SHEET_ID,
-    range: `${TAB_NAME}!A${rowIndex}:O${rowIndex}`,
+    range: `${TAB_NAME}!A${rowIndex}:Q${rowIndex}`,
   });
 }

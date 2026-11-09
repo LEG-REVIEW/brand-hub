@@ -41,7 +41,7 @@ const STATUS_LABELS = {
   not_started: 'Not Started',
   in_progress: 'In Progress',
   needs_review: 'Needs Review',
-  needs_changes: 'Needs Changes',
+  on_hold: 'On Hold',
   completed: 'Completed',
 };
 

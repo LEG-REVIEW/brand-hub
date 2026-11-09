@@ -16,7 +16,7 @@ const STATUSES = [
   { key: 'not_started', label: 'Not Started', color: '#C8B89A' },
   { key: 'in_progress', label: 'In Progress', color: '#8FA8C8' },
   { key: 'needs_review', label: 'Needs Review', color: '#D8B26A' },
-  { key: 'needs_changes', label: 'Needs Changes', color: '#C97B63' },
+  { key: 'on_hold', label: 'On Hold', color: '#9C8BC9' },
   { key: 'completed', label: 'Completed', color: '#B7C9A8' },
 ];
 
@@ -88,6 +88,9 @@ export default function TaskBoard() {
   const [dueDateDraft, setDueDateDraft] = useState('');
   const [driveImages, setDriveImages] = useState({ screenshots: [], designs: [] });
   const [loadingImages, setLoadingImages] = useState(false);
+  // On Hold needs a one-line "what are we waiting for" before it can be saved.
+  // mode 'status' = switching a task to On Hold, 'edit' = changing the reason of a task already on hold.
+  const [holdPrompt, setHoldPrompt] = useState(null); // { task, reason, error, mode }
   const [lightbox, setLightbox] = useState(null); // { images: [...], index: 0 }
   const touchStartXRef = useRef(null);
   const cardRefs = useRef({}); // taskId -> card DOM node, for drag-reorder hit testing
@@ -147,20 +150,48 @@ export default function TaskBoard() {
     setIdentity(name);
   };
 
-  const updateStatus = async (task, newStatus) => {
+  const updateStatus = async (task, newStatus, holdReason) => {
     if (!task || task.status === newStatus) return;
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t)));
-    setSelectedTask((prev) => (prev?.id === task.id ? { ...prev, status: newStatus } : prev));
+    if (newStatus === 'on_hold' && !(holdReason || '').trim()) {
+      setHoldPrompt({ task, reason: '', error: false, mode: 'status' });
+      return;
+    }
+    const reason = newStatus === 'on_hold' ? holdReason.trim() : '';
+    const apply = (t) => ({ ...t, status: newStatus, holdReason: reason });
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? apply(t) : t)));
+    setSelectedTask((prev) => (prev?.id === task.id ? apply(prev) : prev));
     try {
-      await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowIndex: task.rowIndex, status: newStatus }),
+        body: JSON.stringify({ rowIndex: task.rowIndex, status: newStatus, ...(newStatus === 'on_hold' ? { holdReason: reason } : {}) }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(`상태 변경 실패: ${data.detail || data.error || res.status}`);
+      }
       fetchTasks();
     } catch (err) {
       console.error('Failed to update status:', err);
       fetchTasks();
+    }
+  };
+
+  const submitHoldPrompt = async () => {
+    if (!holdPrompt) return;
+    const reason = holdPrompt.reason.trim();
+    if (!reason) {
+      setHoldPrompt((p) => ({ ...p, error: true }));
+      return;
+    }
+    const { task, mode } = holdPrompt;
+    setHoldPrompt(null);
+    if (mode === 'edit') {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, holdReason: reason } : t)));
+      setSelectedTask((prev) => (prev?.id === task.id ? { ...prev, holdReason: reason } : prev));
+      await patchTask(task, { holdReason: reason });
+    } else {
+      await updateStatus(task, 'on_hold', reason);
     }
   };
 
@@ -571,6 +602,22 @@ export default function TaskBoard() {
               }}
             >
               {task.taskDescription}
+            </div>
+          )}
+          {task.status === 'on_hold' && (
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: '#6B5AA6',
+                background: '#F0ECFA',
+                borderRadius: 6,
+                padding: '4px 8px',
+                marginBottom: 8,
+                overflowWrap: 'anywhere',
+              }}
+            >
+              ⏸ {task.holdReason ? `필요한 것: ${task.holdReason}` : '필요한 내용 미입력'}
             </div>
           )}
           {task.links.length > 0 && (
@@ -1098,6 +1145,30 @@ export default function TaskBoard() {
               ))}
             </div>
 
+            {selectedTask.status === 'on_hold' && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  alignItems: 'center',
+                  background: '#F0ECFA',
+                  borderRadius: 8,
+                  padding: '8px 10px',
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#6B5AA6', fontWeight: 600, overflowWrap: 'anywhere' }}>
+                  ⏸ 필요한 것: {selectedTask.holdReason || '아직 입력 안 했어요'}
+                </div>
+                <button
+                  onClick={() => setHoldPrompt({ task: selectedTask, reason: selectedTask.holdReason || '', error: false, mode: 'edit' })}
+                  style={{ border: '1px solid #cfc6ea', background: '#fff', borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 600, color: '#6B5AA6', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  ✏️ 수정
+                </button>
+              </div>
+            )}
+
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#999', marginBottom: 6 }}>👤 담당자 (여러 명 선택 가능)</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1366,6 +1437,61 @@ export default function TaskBoard() {
               {lightbox.index + 1} / {lightbox.images.length}
             </div>
           )}
+        </div>
+      )}
+
+      {holdPrompt && (
+        <div
+          onClick={() => setHoldPrompt(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400, padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 420, boxShadow: '0 10px 30px rgba(0,0,0,0.25)' }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>⏸ On Hold</div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 12, overflowWrap: 'anywhere' }}>
+              {holdPrompt.task.taskTitle}
+              <br />
+              클라이언트에게 뭐가 필요해서 멈춰 있는지 한 줄로 적어주세요.
+            </div>
+            <input
+              autoFocus
+              value={holdPrompt.reason}
+              onChange={(e) => setHoldPrompt((p) => ({ ...p, reason: e.target.value, error: false }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) submitHoldPrompt();
+                if (e.key === 'Escape') setHoldPrompt(null);
+              }}
+              placeholder="예: 로고 원본 파일, 인스타 로그인 정보, 최종 문구 승인"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '10px 12px',
+                fontSize: 14,
+                borderRadius: 8,
+                border: holdPrompt.error ? '1.5px solid #db8585' : '1px solid #ddd',
+                outline: 'none',
+              }}
+            />
+            {holdPrompt.error && (
+              <div style={{ fontSize: 12, color: '#c0564a', marginTop: 6 }}>필요한 내용을 입력해야 On Hold로 저장할 수 있어요.</div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button
+                onClick={() => setHoldPrompt(null)}
+                style={{ border: '1px solid #ddd', background: '#fff', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+              >
+                취소
+              </button>
+              <button
+                onClick={submitHoldPrompt}
+                style={{ border: 'none', background: '#9C8BC9', color: '#fff', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+              >
+                저장
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

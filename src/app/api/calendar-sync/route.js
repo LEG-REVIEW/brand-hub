@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getAllTasks } from '../../../lib/tasksSheet';
+import { google } from 'googleapis';
+import { getAllTasks, getAuth, vancouverDate } from '../../../lib/tasksSheet';
 import { syncTaskToCalendars, getServiceAccountEmail } from '../../../lib/googleCalendar';
 
 export const dynamic = 'force-dynamic';
@@ -19,8 +20,25 @@ export async function GET(request) {
     return NextResponse.json({ serviceAccountEmail: getServiceAccountEmail() });
   }
 
+  // One-time fill: tasks with no statusChangedAt yet get today's date (col Q).
+  // Only column Q is written; nothing else on the row is touched.
+  const all = await getAllTasks();
+  const missing = all.filter((t) => !t.statusChangedAt);
+  if (missing.length) {
+    const today = vancouverDate();
+    const sheets = google.sheets({ version: 'v4', auth: getAuth() });
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: process.env.BRAND_HUB_SHEET_ID,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: missing.map((t) => ({ range: `Tasks!Q${t.rowIndex}`, values: [[today]] })),
+      },
+    });
+    missing.forEach((t) => { t.statusChangedAt = today; });
+  }
+
   const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const tasks = (await getAllTasks()).filter((t) => {
+  const tasks = all.filter((t) => {
     if (t.status === 'archived') return false;
     const date = t.dueDate || t.startDate;
     if (!date) return false;
@@ -34,5 +52,5 @@ export async function GET(request) {
     await syncTaskToCalendars(t, { onlyUpsert: true });
     await new Promise((r) => setTimeout(r, 250));
   }
-  return NextResponse.json({ attempted: mine.length });
+  return NextResponse.json({ attempted: mine.length, statusChangedFilled: missing.length });
 }

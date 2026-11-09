@@ -15,7 +15,7 @@ const STATUS_LABELS = {
   not_started: 'Not Started',
   in_progress: 'In Progress',
   needs_review: 'Needs Review',
-  needs_changes: 'Needs Changes',
+  on_hold: 'On Hold',
   completed: 'Completed',
 };
 
@@ -60,9 +60,15 @@ function buildEvent(task) {
     id: eventIdFor(task.id),
     status: 'confirmed',
     summary: `${done ? '✅ ' : ''}${task.client ? `[${task.client}] ` : ''}${task.taskTitle}`,
+    // Format is read by other apps — keep the memo / Status block / link
+    // layout. The two extra lines sit directly under "Status:".
     description: [
       task.taskDescription,
-      `Status: ${STATUS_LABELS[task.status] || task.status}`,
+      [
+        `Status: ${STATUS_LABELS[task.status] || task.status}`,
+        task.statusChangedAt ? `Status changed: ${task.statusChangedAt}` : null,
+        task.status === 'on_hold' ? `Waiting for: ${task.holdReason || '(not specified yet)'}` : null,
+      ].filter(Boolean).join('\n'),
       `${APP_URL}/tasks?task=${task.id}`,
     ].filter(Boolean).join('\n\n'),
     start: { date: s },
