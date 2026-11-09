@@ -48,3 +48,16 @@ export function toggleAssignee(value, name) {
   const list = parseAssignees(value);
   return (list.includes(name) ? list.filter((n) => n !== name) : [...list, name]).join(', ');
 }
+
+// Google Calendar id per person, for the instant Calendar API sync
+// (see src/lib/googleCalendar.js). Calendar ids are not secrets.
+// To add someone: create a calendar, share it with the service account
+// ("Make changes to events"), then paste its calendar id here.
+// Leave '' to skip a person.
+export const TEAM_MEMBER_CALENDAR_IDS = {
+  슬기: 'd8fbdac67e50d35367dc47a0b64e78922b70b5fd460277b946ceaef777ba80c9@group.calendar.google.com',
+  경민: '',
+  상원: '',
+  정진: '',
+  대표님: '',
+};

@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { notifyTeamMember, formatTaskMessage } from './telegram';
+import { syncTaskToCalendars } from './googleCalendar';
 
 const SHEET_ID = process.env.BRAND_HUB_SHEET_ID;
 const TAB_NAME = 'Tasks';
@@ -109,6 +110,8 @@ export async function appendTask(partialTask, { notify = true, notifyExclude = [
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: [taskToRow(newTask)] },
   });
+
+  await syncTaskToCalendars(newTask);
 
   // Fires for every creation path (manual "New Task" modal, weekly recurring
   // cron, holiday reminder cron) since they all funnel through appendTask.

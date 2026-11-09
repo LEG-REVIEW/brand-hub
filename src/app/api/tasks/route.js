@@ -3,6 +3,11 @@ import { NextResponse } from 'next/server';
 import { getAuth, rowToTask, taskToRow, appendTask, getAllTasks, clearTaskRow } from '../../../lib/tasksSheet';
 import { notifyTeamMember, formatTaskMessage } from '../../../lib/telegram';
 import { parseAssignees } from '../../../lib/teamMembers';
+import { syncTaskToCalendars } from '../../../lib/googleCalendar';
+
+// Fields that show up on the calendar event; anything else (e.g. sortOrder
+// reordering) doesn't need a Calendar API call.
+const CALENDAR_FIELDS = ['client', 'taskTitle', 'taskDescription', 'status', 'assignedTo', 'dueDate', 'startDate'];
 
 const SHEET_ID = process.env.BRAND_HUB_SHEET_ID;
 const TAB_NAME = 'Tasks';
@@ -66,6 +71,10 @@ export async function PATCH(request) {
       requestBody: { values: [taskToRow(mergedTask)] },
     });
 
+    if (CALENDAR_FIELDS.some((f) => updates[f] !== undefined)) {
+      await syncTaskToCalendars(mergedTask);
+    }
+
     // Status-change notification: only "needs_changes" pings anyone (the
     // assignee needs to know work got sent back). "needs_review" is
     // intentionally silent for now.
@@ -110,7 +119,18 @@ export async function DELETE(request) {
     if (!rowIndex) {
       return NextResponse.json({ error: 'rowIndex is required' }, { status: 400 });
     }
+    // Read the task first so its calendar events can be removed too.
+    let existing = null;
+    try {
+      const auth = getAuth();
+      const sheets = google.sheets({ version: 'v4', auth });
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${TAB_NAME}!A${rowIndex}:O${rowIndex}` });
+      existing = rowToTask((r.data.values || [[]])[0], rowIndex);
+    } catch (e) {
+      console.error('DELETE pre-read failed:', e?.message || e);
+    }
     await clearTaskRow(rowIndex);
+    if (existing && existing.id) await syncTaskToCalendars(existing, { deleted: true });
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/tasks error:', err);
