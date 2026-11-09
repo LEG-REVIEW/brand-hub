@@ -54,7 +54,7 @@ export async function GET(request) {
       if (alreadyExists) continue;
 
       const task = await appendTask({
-        client: 'Agora',
+        client: 'Holiday',
         taskTitle,
         taskDescription: `${holiday.date} ${holiday.name}을 위한 홀리데이 테마 소셜/디자인 콘텐츠를 준비해주세요.`,
         assignedTo: '슬기',
