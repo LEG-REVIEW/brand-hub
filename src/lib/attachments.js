@@ -13,17 +13,16 @@ export function blobRefToUrl(ref) {
 // Task links can carry a display name. They are stored in the same
 // comma-separated "links" column as "Name::https://url" (plain URLs, which
 // every older task has, still work). Commas in a name would break the column
-// split, so they are stripped.
+// split, so they are replaced with a space (colons are fine).
 export function parseLink(entry) {
   const raw = String(entry || '');
-  const i = raw.indexOf('::');
-  if (i > 0 && /^https?:\/\//i.test(raw.slice(i + 2))) {
-    return { name: raw.slice(0, i).trim(), url: raw.slice(i + 2).trim() };
-  }
+  const m = raw.match(/^(.*?)::(https?:\/\/.*)$/i);
+  if (m && m[1].trim()) return { name: m[1].trim(), url: m[2].trim() };
   return { name: '', url: raw.trim() };
 }
 
 export function formatLink(name, url) {
-  const clean = String(name || '').replace(/[,:]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // Only commas (column separator) and "::" (name/url separator) are unsafe in a name.
+  const clean = String(name || '').replace(/,/g, ' ').replace(/::+/g, ':').replace(/\s+/g, ' ').trim();
   return clean ? `${clean}::${String(url).trim()}` : String(url).trim();
 }
