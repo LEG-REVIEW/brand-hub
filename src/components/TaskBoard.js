@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import NewTaskModal from './NewTaskModal';
 import { clients } from '../app/clients';
 import { TEAM_MEMBERS, getTeamMemberColor, hasAssignee, toggleAssignee, parseAssignees } from '../lib/teamMembers';
-import { isBlobRef, blobRefToUrl } from '../lib/attachments';
+import { isBlobRef, blobRefToUrl, parseLink, formatLink } from '../lib/attachments';
 import TaskCalendar from './TaskCalendar';
 
 const OFFICIAL_CLIENT_NAMES = clients.filter((c) => c.active).map((c) => c.name);
@@ -78,6 +78,8 @@ export default function TaskBoard() {
   const [identity, setIdentity] = useState(null); // '슬기' | '경민' | '상원' | '정진' | '대니'(=대표님)
   const [newComment, setNewComment] = useState('');
   const [newLink, setNewLink] = useState('');
+  const [newLinkName, setNewLinkName] = useState('');
+  const [editingLink, setEditingLink] = useState(null); // { raw, name }
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -245,8 +247,17 @@ export default function TaskBoard() {
 
   const submitLink = async (task) => {
     if (!newLink.trim()) return;
-    await patchTask(task, { links: [...task.links, newLink.trim()] });
+    await patchTask(task, { links: [...task.links, formatLink(newLinkName, newLink)] });
     setNewLink('');
+    setNewLinkName('');
+  };
+
+  const renameLink = async (task, raw, name) => {
+    const { url } = parseLink(raw);
+    const next = formatLink(name, url);
+    setEditingLink(null);
+    if (next === raw) return;
+    await patchTask(task, { links: task.links.map((l) => (l === raw ? next : l)) });
   };
 
   const removeLink = async (task, link) => {
@@ -1337,24 +1348,72 @@ export default function TaskBoard() {
             <div style={{ fontSize: 11, fontWeight: 700, color: '#999', marginBottom: 6 }}>🔗 LINKS</div>
             {selectedTask.links.length > 0 && (
               <div style={{ marginBottom: 8 }}>
-                {selectedTask.links.map((link) => (
-                  <div key={link} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <a href={link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#3768AB', wordBreak: 'break-all', flex: 1 }}>
-                      {link}
-                    </a>
-                    <button onClick={() => removeLink(selectedTask, link)} style={{ border: 'none', background: 'none', color: '#C97B63', cursor: 'pointer', fontSize: 12 }}>
-                      ×
-                    </button>
-                  </div>
-                ))}
+                {selectedTask.links.map((raw) => {
+                  const { name, url } = parseLink(raw);
+                  const editing = editingLink?.raw === raw;
+                  return (
+                    <div key={raw} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      {editing ? (
+                        <input
+                          autoFocus
+                          value={editingLink.name}
+                          onChange={(e) => setEditingLink({ raw, name: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.nativeEvent.isComposing) renameLink(selectedTask, raw, editingLink.name);
+                            if (e.key === 'Escape') setEditingLink(null);
+                          }}
+                          placeholder="링크 이름 (비우면 이름 없이 URL만)"
+                          style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', fontSize: 13 }}
+                        />
+                      ) : (
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: '#3768AB', fontWeight: name ? 600 : 400, wordBreak: 'break-all' }}>
+                            {name || url}
+                          </a>
+                          {name && (
+                            <div style={{ fontSize: 11, color: '#aaa', wordBreak: 'break-all', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{url}</div>
+                          )}
+                        </div>
+                      )}
+                      {editing ? (
+                        <>
+                          <button onClick={() => renameLink(selectedTask, raw, editingLink.name)} style={{ border: 'none', background: 'none', color: '#3768AB', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                            저장
+                          </button>
+                          <button onClick={() => setEditingLink(null)} style={{ border: 'none', background: 'none', color: '#999', cursor: 'pointer', fontSize: 12 }}>
+                            취소
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => setEditingLink({ raw, name })} title="이름 수정" style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 12 }}>
+                            ✏️
+                          </button>
+                          <button onClick={() => removeLink(selectedTask, raw)} style={{ border: 'none', background: 'none', color: '#C97B63', cursor: 'pointer', fontSize: 12 }}>
+                            ×
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+              <input
+                value={newLinkName}
+                onChange={(e) => setNewLinkName(e.target.value)}
+                placeholder="이름 (선택)"
+                style={{ width: 110, padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }}
+              />
               <input
                 value={newLink}
                 onChange={(e) => setNewLink(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) submitLink(selectedTask);
+                }}
                 placeholder="https://..."
-                style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }}
+                style={{ flex: 1, minWidth: 140, padding: '8px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }}
               />
               <button
                 onClick={() => submitLink(selectedTask)}

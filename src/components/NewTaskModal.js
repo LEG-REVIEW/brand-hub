@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import ClientSelect from './ClientSelect';
+import { formatLink } from '../lib/attachments';
 import { TEAM_MEMBERS, getTeamMemberColor, hasAssignee, toggleAssignee } from '../lib/teamMembers';
 
 function todayStr() {
@@ -31,7 +32,15 @@ export default function NewTaskModal({ onClose, onCreated, clientOptions, isMobi
     }
     setSubmitting(true);
     try {
-      const links = linksText.split('\n').map((l) => l.trim()).filter(Boolean);
+      // A line may be "이름 | https://..." to give the link a name.
+      const links = linksText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => {
+          const m = l.match(/^(.+?)\s*\|\s*(https?:\/\/\S+)$/i);
+          return m ? formatLink(m[1], m[2]) : l;
+        });
 
       await fetch('/api/tasks', {
         method: 'POST',
@@ -191,8 +200,8 @@ export default function NewTaskModal({ onClose, onCreated, clientOptions, isMobi
           ))}
         </div>
 
-        <label style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>링크 (한 줄에 하나씩)</label>
-        <textarea value={linksText} onChange={(e) => setLinksText(e.target.value)} rows={2} placeholder="https://..." style={{ ...inputStyle, resize: 'vertical' }} />
+        <label style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>링크 (한 줄에 하나씩 · 이름 붙이려면 &quot;이름 | URL&quot;)</label>
+        <textarea value={linksText} onChange={(e) => setLinksText(e.target.value)} rows={2} placeholder={"https://...\n또는  메뉴판 | https://..."} style={{ ...inputStyle, resize: 'vertical' }} />
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button onClick={onClose} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #ddd', background: '#fff', fontSize: 14, cursor: 'pointer' }}>
