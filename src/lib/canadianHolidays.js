@@ -69,10 +69,6 @@ export function getCanadianHolidays(year) {
     { name: 'Easter Sunday', date: fmt(easter) },
     { name: "Mother's Day", date: fmt(nthWeekdayOfMonth(year, 4, 0, 2)) }, // 2nd Sunday of May
     { name: 'Halloween', date: fmt(new Date(year, 9, 31)) },
-    {
-      name: 'Black Friday',
-      date: fmt(new Date(year, 10, nthWeekdayOfMonth(year, 10, 4, 4).getDate() + 1)), // day after US Thanksgiving (4th Thu of Nov)
-    },
     { name: 'Christmas Eve', date: fmt(new Date(year, 11, 24)) },
   ];
 }
